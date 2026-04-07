@@ -25,5 +25,40 @@ services:
       timeout: 3s
       retries: 5
 
+  habits-api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: habits-api
+    ports:
+      - "8020:8000"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:password@postgres:5432/habits_db
+      REDIS_URL: redis://redis:6379/2
+      JWT_SECRET: dev-secret-change-in-production-min32chars
+      LOG_LEVEL: info
+    volumes:
+      - ./backend/app:/app/app
+      - ./backend/alembic:/app/alembic
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  habits-web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: habits-web
+    ports:
+      - "3020:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8020
+    depends_on:
+      - habits-api
+    restart: unless-stopped
+
 volumes:
   pgdata:
