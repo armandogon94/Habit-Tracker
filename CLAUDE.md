@@ -1,6 +1,7 @@
 # Habit Tracker — Claude Code Context
 
 > **Project 02** | habits.armandointeligencia.com | Next.js 14 + FastAPI + PostgreSQL
+> **Port allocation:** See [PORTS.md](PORTS.md) before changing any docker-compose ports. All ports outside the assigned ranges are taken by other projects.
 
 ---
 
