@@ -94,7 +94,14 @@ export function useDeleteHabit() {
     // No error swallowing: a failed archive must reject so the caller doesn't
     // navigate away as if it succeeded. apiJson handles the 204 (no body).
     mutationFn: (id: string) => apiJson(`/api/v1/habits/${id}`, { method: "DELETE" }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["habits"] }),
+    // The habit is gone — drop its detail/calendar/analytics caches too so a
+    // Back navigation can't render a just-archived habit from a stale cache.
+    onSuccess: (_data, id) => {
+      qc.invalidateQueries({ queryKey: ["habits"] });
+      qc.removeQueries({ queryKey: ["habit", id] });
+      qc.removeQueries({ queryKey: ["calendar", id] });
+      qc.removeQueries({ queryKey: ["analytics", id] });
+    },
   });
 }
 
