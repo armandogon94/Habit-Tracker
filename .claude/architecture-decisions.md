@@ -9,18 +9,25 @@
 - **Trade-off:** Slightly more compute per request, but trivial for personal use. Cache in Redis (DB#2) if needed.
 - **See:** `.claude/memory.md` § [Architect] Computed Streaks Over Stored Streaks
 
-## RRULE Scheduling (RFC 5545)
+## RRULE Scheduling (RFC 5545) — DAILY-ONLY for now
 
-**Decision:** Use iCalendar RRULE format stored as text field.
+**Decision (2026-06-24):** Keep the `rrule` text column but enforce daily-only at
+the API layer until real scheduling is built. Streak, calendar, and analytics
+logic all assume every calendar day is a due occurrence (PLAN.md lines 287-341),
+so a non-daily rule would silently miscount. Rather than ship an unhonored
+contract, `HabitCreate`/`HabitUpdate` now reject any rrule other than the
+canonical `FREQ=DAILY` (`app/schemas/habit.py::normalize_daily_rrule`).
 
-- **Formats:**
-  - Daily: `FREQ=DAILY`
-  - Weekdays: `FREQ=DAILY;BYDAY=MO,TU,WE,TH,FR`
-  - Custom: `FREQ=WEEKLY;BYDAY=MO,WE,FR`
-
-- **Libraries:** `dateutil.rrule` (Python), `rrule` (npm)
-- **Status:** IMPLEMENTED — habits table has `rrule` column. Streak calculation NOT yet schedule-aware (TODO).
-- **See:** `.claude/memory.md` § [Architect] RRULE for Habit Scheduling
+- **Accepted:** `FREQ=DAILY` (case-insensitive, tolerates a `RRULE:` prefix /
+  trailing `;` / `INTERVAL=1`). Everything else → 422.
+- **Deferred (option b):** real RRULE support via `dateutil.rrule` —
+  schedule-aware streak breaks (only on a missed *due* occurrence),
+  per-occurrence calendar marking, and due-day completion-rate denominators.
+  No frontend UI exposes non-daily schedules yet, so this is intentionally YAGNI.
+- **Tests:** `backend/tests/schemas/test_habit_rrule.py`,
+  `backend/tests/services/test_streak_service.py`.
+- **Status:** ENFORCED. Field kept (no migration); the daily algorithm is
+  unchanged but now extracted into pure, unit-tested helpers.
 
 ## Timezone Handling
 

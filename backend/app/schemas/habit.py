@@ -1,14 +1,41 @@
 from datetime import date, datetime
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+# Only daily habits are supported for now. The streak, calendar, and analytics
+# logic all assume every calendar day is a due occurrence, so accepting any
+# other recurrence (weekly, custom BYDAY, INTERVAL>1) would silently produce
+# wrong results. Reject anything but the canonical daily rule until real RRULE
+# scheduling is implemented. See PLAN.md lines 287-341.
+DAILY_RRULE = "FREQ=DAILY"
+_ACCEPTED_DAILY_RRULES = {"FREQ=DAILY", "FREQ=DAILY;INTERVAL=1"}
+
+
+def normalize_daily_rrule(value: str) -> str:
+    """Return the canonical ``FREQ=DAILY`` or raise for non-daily schedules."""
+    normalized = value.strip()
+    if normalized.upper().startswith("RRULE:"):
+        normalized = normalized[len("RRULE:") :]
+    normalized = normalized.strip().rstrip(";").strip().upper()
+    if normalized in _ACCEPTED_DAILY_RRULES:
+        return DAILY_RRULE
+    raise ValueError(
+        "Only daily habits are supported for now: rrule must be 'FREQ=DAILY'. "
+        "Custom schedules are not yet implemented."
+    )
 
 
 class HabitCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     description: str | None = None
     color: str = Field(default="#3B82F6", pattern=r"^#[0-9a-fA-F]{6}$")
-    rrule: str = "FREQ=DAILY"
+    rrule: str = DAILY_RRULE
+
+    @field_validator("rrule")
+    @classmethod
+    def _validate_rrule(cls, value: str) -> str:
+        return normalize_daily_rrule(value)
 
 
 class HabitUpdate(BaseModel):
@@ -16,6 +43,11 @@ class HabitUpdate(BaseModel):
     description: str | None = None
     color: str | None = None
     rrule: str | None = None
+
+    @field_validator("rrule")
+    @classmethod
+    def _validate_rrule(cls, value: str | None) -> str | None:
+        return None if value is None else normalize_daily_rrule(value)
 
 
 class HabitResponse(BaseModel):
