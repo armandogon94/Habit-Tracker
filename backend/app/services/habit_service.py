@@ -1,4 +1,5 @@
 from collections import Counter
+from collections.abc import Iterable
 from datetime import date, timedelta
 from uuid import UUID
 
@@ -160,7 +161,29 @@ async def get_calendar(
     return days
 
 
-async def get_analytics(db: AsyncSession, habit_id: UUID) -> HabitAnalytics:
+def completion_rate_pct(
+    completed_dates: Iterable[date],
+    today: date,
+    created_date: date,
+    window_days: int = 30,
+) -> float:
+    """Percent of eligible days completed in the trailing window.
+
+    The window is the last ``window_days`` days, inclusive of today. Days before
+    the habit existed do not count toward the denominator, so a brand-new habit
+    is not penalised. The result is rounded to one decimal and clamped to 0-100.
+    """
+    window_start = today - timedelta(days=window_days - 1)
+    effective_start = max(window_start, created_date)
+    eligible_days = max(1, (today - effective_start).days + 1)
+    completed = len({d for d in completed_dates if effective_start <= d <= today})
+    rate = (completed / eligible_days) * 100
+    return round(min(100.0, max(0.0, rate)), 1)
+
+
+async def get_analytics(db: AsyncSession, habit: Habit) -> HabitAnalytics:
+    habit_id = habit.id
+
     # Total completions
     count_result = await db.execute(
         select(func.count()).where(HabitLog.habit_id == habit_id)
@@ -172,10 +195,15 @@ async def get_analytics(db: AsyncSession, habit_id: UUID) -> HabitAnalytics:
     current = await compute_current_streak(db, habit_id, today)
     longest = await compute_longest_streak(db, habit_id)
 
-    # Last 30 days completion rate
-    thirty_days_ago = today - timedelta(days=30)
-    recent_logs = await get_logs(db, habit_id, thirty_days_ago, today)
-    rate = (len(recent_logs) / 30) * 100 if total > 0 else 0.0
+    # Completion rate over a true 30-day window, counting only days the habit
+    # has existed (so the rate stays within 0-100% and new habits aren't
+    # penalised).
+    window_start = today - timedelta(days=29)
+    recent_logs = await get_logs(db, habit_id, window_start, today)
+    created_date = habit.created_at.date() if habit.created_at else window_start
+    rate = completion_rate_pct(
+        (log.completed_date for log in recent_logs), today, created_date
+    )
 
     # Weekly distribution
     all_result = await db.execute(
@@ -194,7 +222,7 @@ async def get_analytics(db: AsyncSession, habit_id: UUID) -> HabitAnalytics:
 
     return HabitAnalytics(
         total_completions=total,
-        completion_rate=round(rate, 1),
+        completion_rate=rate,
         current_streak=current,
         longest_streak=longest,
         best_day=best_day,

@@ -205,4 +205,4 @@ async def get_analytics(
     if not habit:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Habit not found")
 
-    return await habit_service.get_analytics(db, habit.id)
+    return await habit_service.get_analytics(db, habit)
