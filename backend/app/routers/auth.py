@@ -93,11 +93,18 @@ async def refresh(
         ) from None
 
     jti = payload.get("jti")
+    if not jti:
+        # Malformed refresh token (no jti). Reject WITHOUT revoking sessions so a
+        # crafted/legacy token can't be used to force-logout a victim.
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token"
+        )
+
     # Atomically validate AND revoke the presented jti (consume). Two concurrent
     # refreshes of the same jti cannot both win, so a session can never fork.
-    if not jti or not await refresh_whitelist.consume(redis, jti, user_id):
-        # Absent / already-consumed jti: presenting a rotated token signals reuse
-        # (RFC 6819), so revoke every session for the user.
+    if not await refresh_whitelist.consume(redis, jti, user_id):
+        # A well-formed but already-consumed jti is genuine reuse (RFC 6819), so
+        # revoke every session for the user.
         await refresh_whitelist.revoke_all_for_user(redis, user_id)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token"
@@ -121,7 +128,7 @@ async def logout(
     if refresh_token:
         payload = decode_token(refresh_token)
         if payload and payload.get("jti"):
-            await refresh_whitelist.revoke(redis, payload["jti"])
+            await refresh_whitelist.revoke(redis, payload["jti"], payload.get("sub"))
     response.delete_cookie("refresh_token", path="/")
     return {"message": "Logged out"}
 
