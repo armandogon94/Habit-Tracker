@@ -124,7 +124,11 @@ async def archive_habit(
     await habit_service.archive_habit(db, habit)
 
 
-@router.post("/{habit_id}/log", response_model=HabitLogResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/{habit_id}/log",
+    response_model=HabitLogResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 async def log_completion(
     habit_id: UUID,
     data: HabitLogCreate,

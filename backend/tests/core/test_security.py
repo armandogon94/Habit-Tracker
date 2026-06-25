@@ -4,7 +4,7 @@ These exercise app.core.security directly. They need no database; the only
 external dependency is settings.JWT_SECRET, which resolves to a usable value.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import bcrypt
 import pytest
@@ -24,7 +24,7 @@ def _encode(claims: dict) -> str:
 
 
 def _ts(delta: timedelta) -> int:
-    return int((datetime.now(timezone.utc) + delta).timestamp())
+    return int((datetime.now(UTC) + delta).timestamp())
 
 
 class TestPasswordHashing:

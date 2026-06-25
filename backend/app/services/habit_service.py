@@ -1,6 +1,6 @@
 from collections import Counter, defaultdict
 from collections.abc import Iterable
-from datetime import date, timedelta
+from datetime import UTC, date, timedelta
 from uuid import UUID
 
 from sqlalchemy import select
@@ -112,9 +112,9 @@ async def update_habit(db: AsyncSession, habit: Habit, data: HabitUpdate) -> Hab
 
 
 async def archive_habit(db: AsyncSession, habit: Habit) -> None:
-    from datetime import datetime, timezone
+    from datetime import datetime
 
-    habit.archived_at = datetime.now(timezone.utc)
+    habit.archived_at = datetime.now(UTC)
     await db.flush()
 
 

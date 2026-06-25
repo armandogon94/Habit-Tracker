@@ -29,9 +29,23 @@ dev = [
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+# Alembic migrations are generated; don't lint their long auto-emitted lines.
+extend-exclude = ["alembic/versions"]
 
 [tool.ruff.lint]
 select = ["E", "W", "F", "I", "B", "UP"]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI uses Depends()/Query()/etc. as argument defaults by design; these are
+# not the mutable-default footgun that B008 targets.
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.Query",
+    "fastapi.Path",
+    "fastapi.Header",
+    "fastapi.Cookie",
+    "fastapi.Body",
+]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
