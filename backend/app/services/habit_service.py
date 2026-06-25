@@ -1,9 +1,9 @@
-from collections import Counter
+from collections import Counter, defaultdict
 from collections.abc import Iterable
 from datetime import date, timedelta
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.habit import Habit
@@ -16,31 +16,21 @@ from app.schemas.habit import (
     HabitResponse,
     HabitUpdate,
 )
-from app.services.streak_service import compute_current_streak, compute_longest_streak
+from app.services.streak_service import (
+    current_streak_from_dates,
+    longest_streak_from_dates,
+)
 
 
-async def list_habits(db: AsyncSession, user_id: UUID) -> list[HabitResponse]:
-    result = await db.execute(
-        select(Habit)
-        .where(Habit.user_id == user_id, Habit.archived_at.is_(None))
-        .order_by(Habit.created_at)
-    )
-    habits = result.scalars().all()
-
-    today = date.today()
+def build_habit_responses(
+    habits: list[Habit],
+    dates_by_habit: dict[UUID, list[date]],
+    today: date,
+) -> list[HabitResponse]:
+    """Build habit responses with streaks computed from pre-fetched logs."""
     responses = []
     for habit in habits:
-        current = await compute_current_streak(db, habit.id, today)
-        longest = await compute_longest_streak(db, habit.id)
-
-        # Check if completed today
-        log_result = await db.execute(
-            select(HabitLog).where(
-                HabitLog.habit_id == habit.id, HabitLog.completed_date == today
-            )
-        )
-        completed_today = log_result.scalar_one_or_none() is not None
-
+        dates = dates_by_habit.get(habit.id, [])
         responses.append(
             HabitResponse(
                 id=habit.id,
@@ -50,13 +40,36 @@ async def list_habits(db: AsyncSession, user_id: UUID) -> list[HabitResponse]:
                 rrule=habit.rrule,
                 created_at=habit.created_at,
                 archived_at=habit.archived_at,
-                current_streak=current,
-                longest_streak=longest,
-                completed_today=completed_today,
+                current_streak=current_streak_from_dates(dates, today),
+                longest_streak=longest_streak_from_dates(dates),
+                completed_today=today in dates,
             )
         )
-
     return responses
+
+
+async def list_habits(db: AsyncSession, user_id: UUID) -> list[HabitResponse]:
+    result = await db.execute(
+        select(Habit)
+        .where(Habit.user_id == user_id, Habit.archived_at.is_(None))
+        .order_by(Habit.created_at)
+    )
+    habits = list(result.scalars().all())
+    if not habits:
+        return []
+
+    # Fetch every log for these habits in one query, then compute streaks in
+    # memory — replaces the previous 3-queries-per-habit (N+1) pattern.
+    logs_result = await db.execute(
+        select(HabitLog.habit_id, HabitLog.completed_date).where(
+            HabitLog.habit_id.in_([habit.id for habit in habits])
+        )
+    )
+    dates_by_habit: dict[UUID, list[date]] = defaultdict(list)
+    for habit_id, completed_date in logs_result.all():
+        dates_by_habit[habit_id].append(completed_date)
+
+    return build_habit_responses(habits, dates_by_habit, date.today())
 
 
 async def create_habit(db: AsyncSession, user_id: UUID, data: HabitCreate) -> Habit:
@@ -181,50 +194,41 @@ def completion_rate_pct(
     return round(min(100.0, max(0.0, rate)), 1)
 
 
-async def get_analytics(db: AsyncSession, habit: Habit) -> HabitAnalytics:
-    habit_id = habit.id
+def build_analytics(
+    completed_dates: Iterable[date],
+    today: date,
+    created_date: date,
+) -> HabitAnalytics:
+    """Compute analytics from a habit's completion dates (no DB access)."""
+    all_dates = list(completed_dates)
 
-    # Total completions
-    count_result = await db.execute(
-        select(func.count()).where(HabitLog.habit_id == habit_id)
-    )
-    total = count_result.scalar() or 0
-
-    # Streaks
-    today = date.today()
-    current = await compute_current_streak(db, habit_id, today)
-    longest = await compute_longest_streak(db, habit_id)
-
-    # Completion rate over a true 30-day window, counting only days the habit
-    # has existed (so the rate stays within 0-100% and new habits aren't
-    # penalised).
-    window_start = today - timedelta(days=29)
-    recent_logs = await get_logs(db, habit_id, window_start, today)
-    created_date = habit.created_at.date() if habit.created_at else window_start
-    rate = completion_rate_pct(
-        (log.completed_date for log in recent_logs), today, created_date
-    )
-
-    # Weekly distribution
-    all_result = await db.execute(
-        select(HabitLog.completed_date).where(HabitLog.habit_id == habit_id)
-    )
-    all_dates = [row[0] for row in all_result.all()]
     day_names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
     weekday_counts = Counter(d.weekday() for d in all_dates)
     weekly = {day_names[i]: weekday_counts.get(i, 0) for i in range(7)}
-
-    # Best day
     best_day = None
     if weekday_counts:
-        best_idx = max(weekday_counts, key=weekday_counts.get)
-        best_day = day_names[best_idx]
+        best_day = day_names[max(weekday_counts, key=weekday_counts.get)]
 
     return HabitAnalytics(
-        total_completions=total,
-        completion_rate=rate,
-        current_streak=current,
-        longest_streak=longest,
+        total_completions=len(all_dates),
+        completion_rate=completion_rate_pct(all_dates, today, created_date),
+        current_streak=current_streak_from_dates(all_dates, today),
+        longest_streak=longest_streak_from_dates(all_dates),
         best_day=best_day,
         weekly_counts=weekly,
     )
+
+
+async def get_analytics(db: AsyncSession, habit: Habit) -> HabitAnalytics:
+    today = date.today()
+
+    # Single fetch of all completion dates; every metric is derived in memory,
+    # replacing the previous separate streak/count/weekly/rate queries.
+    result = await db.execute(
+        select(HabitLog.completed_date).where(HabitLog.habit_id == habit.id)
+    )
+    all_dates = [row[0] for row in result.all()]
+
+    window_start = today - timedelta(days=29)
+    created_date = habit.created_at.date() if habit.created_at else window_start
+    return build_analytics(all_dates, today, created_date)
