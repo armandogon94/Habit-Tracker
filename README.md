@@ -239,6 +239,8 @@ Internet → Traefik (80/443)
 | `FRONTEND_PORT` | Host port for Next.js | `3020` |
 | `DATABASE_URL` | PostgreSQL connection string | `postgresql+asyncpg://postgres:password@localhost:5432/habits_db` |
 | `JWT_SECRET` | Secret key for JWT signing (min 32 chars) | — |
+| `COOKIE_SECURE` | `Secure` flag on the refresh-token cookie; must be `true` in production | `false` |
+| `ENVIRONMENT` | Deployment environment; `production` requires `COOKIE_SECURE=true` | `development` |
 | `REDIS_URL` | Redis connection string | `redis://localhost:6379/2` |
 | `LOG_LEVEL` | Logging level | `info` |
 | `NEXT_PUBLIC_API_URL` | Backend URL for frontend | `http://localhost:8020` |
