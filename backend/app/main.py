@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
+from app.core.exceptions import register_exception_handlers
 from app.routers import auth, habits
 
 app = FastAPI(
@@ -10,6 +11,8 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
 )
+
+register_exception_handlers(app)
 
 app.add_middleware(
     CORSMiddleware,
