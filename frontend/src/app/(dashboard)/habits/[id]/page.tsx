@@ -107,8 +107,12 @@ export default function HabitDetailPage() {
 
   async function handleDelete() {
     if (!confirm("Archive this habit? You can't undo this.")) return;
-    await deleteHabit.mutateAsync(id);
-    router.push("/habits");
+    try {
+      await deleteHabit.mutateAsync(id);
+      router.push("/habits");
+    } catch {
+      alert("Could not archive this habit. Please try again.");
+    }
   }
 
   return (

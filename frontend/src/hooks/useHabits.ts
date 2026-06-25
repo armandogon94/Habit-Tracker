@@ -91,8 +91,9 @@ export function useToggleHabit() {
 export function useDeleteHabit() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) =>
-      apiJson(`/api/v1/habits/${id}`, { method: "DELETE" }).catch(() => null),
+    // No error swallowing: a failed archive must reject so the caller doesn't
+    // navigate away as if it succeeded. apiJson handles the 204 (no body).
+    mutationFn: (id: string) => apiJson(`/api/v1/habits/${id}`, { method: "DELETE" }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["habits"] }),
   });
 }
