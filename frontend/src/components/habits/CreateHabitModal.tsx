@@ -1,7 +1,7 @@
 "use client";
 
 import { useCreateHabit } from "@/hooks/useHabits";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 
 const COLORS = [
   "#3B82F6", "#EF4444", "#10B981", "#F59E0B",
@@ -13,6 +13,41 @@ export function CreateHabitModal({ onClose }: { onClose: () => void }) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [color, setColor] = useState(COLORS[0]);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  // Capture the element focused before the modal opened (runs during the first
+  // render, before the autoFocus'd input steals focus) so we can restore it.
+  const [opener] = useState<HTMLElement | null>(() =>
+    typeof document !== "undefined" ? (document.activeElement as HTMLElement | null) : null,
+  );
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        onClose();
+        return;
+      }
+      if (e.key === "Tab") {
+        const focusables = dialogRef.current?.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])',
+        );
+        if (!focusables || focusables.length === 0) return;
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      opener?.focus();
+    };
+  }, [onClose, opener]);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -21,9 +56,22 @@ export function CreateHabitModal({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
-      <div className="bg-slate-800 rounded-xl p-6 w-full max-w-md shadow-2xl">
-        <h2 className="text-xl font-bold mb-5">New Habit</h2>
+    <div
+      role="presentation"
+      onClick={onClose}
+      className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50"
+    >
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="new-habit-title"
+        onClick={(e) => e.stopPropagation()}
+        className="bg-slate-800 rounded-xl p-6 w-full max-w-md shadow-2xl"
+      >
+        <h2 id="new-habit-title" className="text-xl font-bold mb-5">
+          New Habit
+        </h2>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
