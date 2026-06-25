@@ -36,6 +36,21 @@ async def is_valid(redis: Redis, jti: str, user_id: UUID | str) -> bool:
     return stored is not None and stored == str(user_id)
 
 
+async def consume(redis: Redis, jti: str, user_id: UUID | str) -> bool:
+    """Atomically validate-and-revoke ``jti`` for rotation.
+
+    GETDEL is a single Redis command, so two concurrent /refresh calls that
+    present the same jti cannot both succeed: exactly one observes the value and
+    removes it, the rest see it already gone (reuse). Returns True iff the jti
+    was whitelisted for ``user_id`` (and is now removed).
+    """
+    stored = await redis.getdel(_jti_key(jti))
+    if stored is None or stored != str(user_id):
+        return False
+    await redis.srem(_user_key(user_id), jti)
+    return True
+
+
 async def revoke(redis: Redis, jti: str, user_id: UUID | str | None = None) -> None:
     """Remove a single ``jti`` from the whitelist."""
     await redis.delete(_jti_key(jti))

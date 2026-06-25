@@ -1,6 +1,7 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8020";
 
 let accessToken: string | null = null;
+let refreshPromise: Promise<string | null> | null = null;
 
 export function setAccessToken(token: string | null) {
   accessToken = token;
@@ -11,18 +12,27 @@ export function getAccessToken(): string | null {
 }
 
 async function refreshAccessToken(): Promise<string | null> {
-  try {
-    const res = await fetch(`${API_URL}/api/v1/auth/refresh`, {
-      method: "POST",
-      credentials: "include",
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    accessToken = data.access_token;
-    return accessToken;
-  } catch {
-    return null;
-  }
+  // Single-flight: coalesce concurrent 401s into ONE /refresh call. The refresh
+  // token rotates server-side, so presenting it twice would trip reuse detection
+  // and revoke the whole session; sharing one in-flight call prevents that.
+  if (refreshPromise) return refreshPromise;
+  refreshPromise = (async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/v1/auth/refresh`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      accessToken = data.access_token;
+      return accessToken;
+    } catch {
+      return null;
+    } finally {
+      refreshPromise = null;
+    }
+  })();
+  return refreshPromise;
 }
 
 export async function apiFetch(

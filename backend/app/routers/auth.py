@@ -93,9 +93,11 @@ async def refresh(
         ) from None
 
     jti = payload.get("jti")
-    if not jti or not await refresh_whitelist.is_valid(redis, jti, user_id):
-        # Unknown / already-rotated / revoked jti. Replaying a rotated token
-        # signals theft (RFC 6819 reuse detection), so revoke every session.
+    # Atomically validate AND revoke the presented jti (consume). Two concurrent
+    # refreshes of the same jti cannot both win, so a session can never fork.
+    if not jti or not await refresh_whitelist.consume(redis, jti, user_id):
+        # Absent / already-consumed jti: presenting a rotated token signals reuse
+        # (RFC 6819), so revoke every session for the user.
         await refresh_whitelist.revoke_all_for_user(redis, user_id)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token"
@@ -103,11 +105,9 @@ async def refresh(
 
     user = await get_user_by_id(db, user_id)
     if not user:
-        await refresh_whitelist.revoke(redis, jti, user_id)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
 
-    # Rotate: revoke the presented token, then issue + whitelist a fresh one.
-    await refresh_whitelist.revoke(redis, jti, user_id)
+    # The presented jti is now consumed; issue + whitelist a fresh one.
     await _issue_refresh(redis, response, str(user.id))
     return TokenResponse(access_token=create_access_token(str(user.id)))
 
