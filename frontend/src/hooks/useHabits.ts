@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiJson } from "@/lib/api";
+import { apiFetch, apiJson } from "@/lib/api";
 import type { CalendarDay, Habit, HabitAnalytics } from "@/types/habit";
 
 export function useHabits() {
@@ -43,19 +43,47 @@ export function useToggleHabit() {
       date: string;
       completed: boolean;
     }) => {
-      if (completed) {
-        // Remove completion
-        await apiJson(`/api/v1/habits/${habitId}/log/${date}`, { method: "DELETE" });
-      } else {
-        // Add completion
-        await apiJson(`/api/v1/habits/${habitId}/log`, {
-          method: "POST",
-          body: JSON.stringify({ completed_date: date }),
-        });
+      const res = completed
+        ? await apiFetch(`/api/v1/habits/${habitId}/log/${date}`, { method: "DELETE" })
+        : await apiFetch(`/api/v1/habits/${habitId}/log`, {
+            method: "POST",
+            body: JSON.stringify({ completed_date: date }),
+          });
+      // Idempotent: completing an already-completed day (409) or un-completing a
+      // day that has no log (404) already satisfy the intended end state, so a
+      // double/cross-component tap converges instead of surfacing an error.
+      if (!res.ok && res.status !== 404 && res.status !== 409) {
+        const err = await res.json().catch(() => ({ detail: "Request failed" }));
+        throw new Error(err.detail || `HTTP ${res.status}`);
       }
     },
-    onSuccess: () => {
+    // Optimistic flip so the toggle responds instantly and a second tap reads
+    // fresh state instead of re-firing against the old value.
+    onMutate: async ({ habitId, completed }) => {
+      await qc.cancelQueries({ queryKey: ["habits"] });
+      await qc.cancelQueries({ queryKey: ["habit", habitId] });
+      const prevList = qc.getQueryData<Habit[]>(["habits"]);
+      const prevHabit = qc.getQueryData<Habit>(["habit", habitId]);
+      qc.setQueryData<Habit[]>(["habits"], (old) =>
+        old?.map((h) => (h.id === habitId ? { ...h, completed_today: !completed } : h)),
+      );
+      qc.setQueryData<Habit>(["habit", habitId], (h) =>
+        h ? { ...h, completed_today: !completed } : h,
+      );
+      return { prevList, prevHabit };
+    },
+    onError: (_err, { habitId }, ctx) => {
+      if (ctx?.prevList) qc.setQueryData(["habits"], ctx.prevList);
+      if (ctx?.prevHabit) qc.setQueryData(["habit", habitId], ctx.prevHabit);
+    },
+    // Refetch every key the list AND the detail page depend on. The old code
+    // only invalidated ["habits"], leaving the detail page's habit/analytics/
+    // calendar caches stale after a toggle.
+    onSettled: (_data, _err, { habitId }) => {
       qc.invalidateQueries({ queryKey: ["habits"] });
+      qc.invalidateQueries({ queryKey: ["habit", habitId] });
+      qc.invalidateQueries({ queryKey: ["analytics", habitId] });
+      qc.invalidateQueries({ queryKey: ["calendar", habitId] });
     },
   });
 }
