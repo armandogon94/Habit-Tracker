@@ -45,9 +45,16 @@ def current_streak_from_dates(completed_dates: Iterable[date], today: date) -> i
     return streak
 
 
-def longest_streak_from_dates(completed_dates: Iterable[date]) -> int:
-    """Return the length of the longest run of consecutive completed days."""
-    days = sorted(set(completed_dates))
+def longest_streak_from_dates(
+    completed_dates: Iterable[date], today: date | None = None
+) -> int:
+    """Return the length of the longest run of consecutive completed days.
+
+    When ``today`` is given, dates after it are ignored so future-dated rows
+    (e.g. legacy data created before the API rejected future logs) cannot
+    inflate the result.
+    """
+    days = sorted({d for d in completed_dates if today is None or d <= today})
     if not days:
         return 0
 
@@ -76,8 +83,10 @@ async def compute_current_streak(
     return current_streak_from_dates((row[0] for row in result.all()), today)
 
 
-async def compute_longest_streak(db: AsyncSession, habit_id: UUID) -> int:
+async def compute_longest_streak(
+    db: AsyncSession, habit_id: UUID, today: date | None = None
+) -> int:
     result = await db.execute(
         select(HabitLog.completed_date).where(HabitLog.habit_id == habit_id)
     )
-    return longest_streak_from_dates(row[0] for row in result.all())
+    return longest_streak_from_dates((row[0] for row in result.all()), today)

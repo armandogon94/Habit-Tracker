@@ -63,7 +63,7 @@ async def get_habit(
 
     today = local_today(user.timezone)
     current = await compute_current_streak(db, habit.id, today)
-    longest = await compute_longest_streak(db, habit.id)
+    longest = await compute_longest_streak(db, habit.id, today)
     logs = await habit_service.get_logs(db, habit.id, today, today)
     completed_today = len(logs) > 0
 
@@ -93,8 +93,10 @@ async def update_habit(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Habit not found")
 
     habit = await habit_service.update_habit(db, habit, data)
-    current = await compute_current_streak(db, habit.id)
-    longest = await compute_longest_streak(db, habit.id)
+    today = local_today(user.timezone)
+    current = await compute_current_streak(db, habit.id, today)
+    longest = await compute_longest_streak(db, habit.id, today)
+    logs = await habit_service.get_logs(db, habit.id, today, today)
 
     return HabitResponse(
         id=habit.id,
@@ -103,8 +105,10 @@ async def update_habit(
         color=habit.color,
         rrule=habit.rrule,
         created_at=habit.created_at,
+        archived_at=habit.archived_at,
         current_streak=current,
         longest_streak=longest,
+        completed_today=len(logs) > 0,
     )
 
 

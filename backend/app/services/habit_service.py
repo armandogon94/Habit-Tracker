@@ -41,7 +41,7 @@ def build_habit_responses(
                 created_at=habit.created_at,
                 archived_at=habit.archived_at,
                 current_streak=current_streak_from_dates(dates, today),
-                longest_streak=longest_streak_from_dates(dates),
+                longest_streak=longest_streak_from_dates(dates, today),
                 completed_today=today in dates,
             )
         )
