@@ -1,0 +1,25 @@
+# Generated Xcode project (regenerate with `xcodegen`)
+HabitTracker.xcodeproj/xcuserdata/
+HabitTracker.xcodeproj/project.xcworkspace/xcuserdata/
+
+# Build artifacts
+build/
+DerivedData/
+.build/
+*.xcarchive
+
+# Swift Package Manager
+.swiftpm/
+Package.resolved
+
+# CocoaPods (not used, but guard)
+Pods/
+
+# fastlane
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots
+fastlane/test_output
+
+# macOS
+.DS_Store
