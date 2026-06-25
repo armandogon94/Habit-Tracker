@@ -43,18 +43,27 @@ export function useToggleHabit() {
       date: string;
       completed: boolean;
     }) => {
-      const res = completed
-        ? await apiFetch(`/api/v1/habits/${habitId}/log/${date}`, { method: "DELETE" })
-        : await apiFetch(`/api/v1/habits/${habitId}/log`, {
-            method: "POST",
-            body: JSON.stringify({ completed_date: date }),
-          });
-      // Idempotent: completing an already-completed day (409) or un-completing a
-      // day that has no log (404) already satisfy the intended end state, so a
-      // double/cross-component tap converges instead of surfacing an error.
-      if (!res.ok && res.status !== 404 && res.status !== 409) {
-        const err = await res.json().catch(() => ({ detail: "Request failed" }));
-        throw new Error(err.detail || `HTTP ${res.status}`);
+      if (completed) {
+        // Un-complete: DELETE the log. A 404 means it was already absent, which
+        // already satisfies the intended end state — converge, don't error.
+        const res = await apiFetch(`/api/v1/habits/${habitId}/log/${date}`, {
+          method: "DELETE",
+        });
+        if (!res.ok && res.status !== 404) {
+          const err = await res.json().catch(() => ({ detail: "Request failed" }));
+          throw new Error(err.detail || `HTTP ${res.status}`);
+        }
+      } else {
+        // Complete: POST the log. A 409 means it is already completed (idempotent),
+        // but a 404 means the habit is gone/inaccessible and MUST surface as an error.
+        const res = await apiFetch(`/api/v1/habits/${habitId}/log`, {
+          method: "POST",
+          body: JSON.stringify({ completed_date: date }),
+        });
+        if (!res.ok && res.status !== 409) {
+          const err = await res.json().catch(() => ({ detail: "Request failed" }));
+          throw new Error(err.detail || `HTTP ${res.status}`);
+        }
       }
     },
     // Optimistic flip so the toggle responds instantly and a second tap reads

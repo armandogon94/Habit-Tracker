@@ -1,13 +1,17 @@
 "use client";
 
 import { useToggleHabit } from "@/hooks/useHabits";
+import { useAuth } from "@/lib/auth";
 import { localToday } from "@/lib/utils";
 import type { Habit } from "@/types/habit";
 import Link from "next/link";
 
 export function HabitCard({ habit }: { habit: Habit }) {
+  const { user } = useAuth();
   const toggle = useToggleHabit();
-  const today = localToday();
+  // Use the timezone the backend stored at registration so the logged date
+  // matches the backend's "today" (the raw browser zone can drift after travel).
+  const today = localToday(user?.timezone);
 
   function handleToggle(e: React.MouseEvent) {
     e.preventDefault();

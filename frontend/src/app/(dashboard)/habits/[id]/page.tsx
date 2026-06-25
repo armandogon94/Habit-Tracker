@@ -96,7 +96,7 @@ export default function HabitDetailPage() {
     );
   }
 
-  const today = localToday();
+  const today = localToday(user.timezone);
 
   const weeklyData = analytics
     ? Object.entries(analytics.weekly_counts).map(([day, count]) => ({
