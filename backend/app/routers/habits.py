@@ -18,6 +18,7 @@ from app.schemas.habit import (
 )
 from app.services import habit_service
 from app.services.streak_service import compute_current_streak, compute_longest_streak
+from app.services.time_service import local_today
 
 router = APIRouter(prefix="/api/v1/habits", tags=["habits"])
 
@@ -27,7 +28,7 @@ async def list_habits(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await habit_service.list_habits(db, user.id)
+    return await habit_service.list_habits(db, user.id, local_today(user.timezone))
 
 
 @router.post("", response_model=HabitResponse, status_code=status.HTTP_201_CREATED)
@@ -60,7 +61,7 @@ async def get_habit(
     if not habit:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Habit not found")
 
-    today = date.today()
+    today = local_today(user.timezone)
     current = await compute_current_streak(db, habit.id, today)
     longest = await compute_longest_streak(db, habit.id)
     logs = await habit_service.get_logs(db, habit.id, today, today)
@@ -130,10 +131,16 @@ async def log_completion(
     if not habit:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Habit not found")
 
+    if data.completed_date > local_today(user.timezone):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="completed_date cannot be in the future",
+        )
+
     try:
         log = await habit_service.log_completion(db, habit_id, data)
     except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e)) from e
 
     return log
 
@@ -168,9 +175,13 @@ async def get_logs(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Habit not found")
 
     if not end_date:
-        end_date = date.today()
+        end_date = local_today(user.timezone)
     if not start_date:
         start_date = end_date - timedelta(days=90)
+    try:
+        habit_service.validate_date_range(start_date, end_date)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e)) from e
 
     return await habit_service.get_logs(db, habit_id, start_date, end_date)
 
@@ -188,9 +199,13 @@ async def get_calendar(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Habit not found")
 
     if not end_date:
-        end_date = date.today()
+        end_date = local_today(user.timezone)
     if not start_date:
         start_date = end_date - timedelta(days=365)
+    try:
+        habit_service.validate_date_range(start_date, end_date)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e)) from e
 
     return await habit_service.get_calendar(db, habit_id, start_date, end_date)
 
@@ -205,4 +220,4 @@ async def get_analytics(
     if not habit:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Habit not found")
 
-    return await habit_service.get_analytics(db, habit)
+    return await habit_service.get_analytics(db, habit, local_today(user.timezone))

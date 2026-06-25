@@ -9,7 +9,10 @@ from pydantic import BaseModel, Field, field_validator
 # wrong results. Reject anything but the canonical daily rule until real RRULE
 # scheduling is implemented. See PLAN.md lines 287-341.
 DAILY_RRULE = "FREQ=DAILY"
-_ACCEPTED_DAILY_RRULES = {"FREQ=DAILY", "FREQ=DAILY;INTERVAL=1"}
+# Accepted as "daily": FREQ=DAILY alone, or with an explicit INTERVAL=1. The
+# rule is parsed into an unordered set of components so clause order does not
+# matter (FREQ=DAILY;INTERVAL=1 and INTERVAL=1;FREQ=DAILY are equivalent).
+_DAILY_COMPONENT_SETS = ({"FREQ=DAILY"}, {"FREQ=DAILY", "INTERVAL=1"})
 
 
 def normalize_daily_rrule(value: str) -> str:
@@ -17,8 +20,8 @@ def normalize_daily_rrule(value: str) -> str:
     normalized = value.strip()
     if normalized.upper().startswith("RRULE:"):
         normalized = normalized[len("RRULE:") :]
-    normalized = normalized.strip().rstrip(";").strip().upper()
-    if normalized in _ACCEPTED_DAILY_RRULES:
+    components = {part.strip().upper() for part in normalized.split(";") if part.strip()}
+    if components in _DAILY_COMPONENT_SETS:
         return DAILY_RRULE
     raise ValueError(
         "Only daily habits are supported for now: rrule must be 'FREQ=DAILY'. "
@@ -39,9 +42,11 @@ class HabitCreate(BaseModel):
 
 
 class HabitUpdate(BaseModel):
-    name: str | None = None
+    # Mirror HabitCreate's constraints so update cannot set values create rejects
+    # (empty/overlong name, non-hex color).
+    name: str | None = Field(default=None, min_length=1, max_length=255)
     description: str | None = None
-    color: str | None = None
+    color: str | None = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$")
     rrule: str | None = None
 
     @field_validator("rrule")

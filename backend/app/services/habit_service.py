@@ -48,7 +48,7 @@ def build_habit_responses(
     return responses
 
 
-async def list_habits(db: AsyncSession, user_id: UUID) -> list[HabitResponse]:
+async def list_habits(db: AsyncSession, user_id: UUID, today: date) -> list[HabitResponse]:
     result = await db.execute(
         select(Habit)
         .where(Habit.user_id == user_id, Habit.archived_at.is_(None))
@@ -69,7 +69,7 @@ async def list_habits(db: AsyncSession, user_id: UUID) -> list[HabitResponse]:
     for habit_id, completed_date in logs_result.all():
         dates_by_habit[habit_id].append(completed_date)
 
-    return build_habit_responses(habits, dates_by_habit, date.today())
+    return build_habit_responses(habits, dates_by_habit, today)
 
 
 async def create_habit(db: AsyncSession, user_id: UUID, data: HabitCreate) -> Habit:
@@ -87,8 +87,17 @@ async def create_habit(db: AsyncSession, user_id: UUID, data: HabitCreate) -> Ha
 
 
 async def get_habit(db: AsyncSession, habit_id: UUID, user_id: UUID) -> Habit | None:
+    """Fetch a user's ACTIVE (non-archived) habit, or None.
+
+    Archived (soft-deleted) habits are excluded so every direct route — read,
+    update, log, calendar, analytics — treats them as gone.
+    """
     result = await db.execute(
-        select(Habit).where(Habit.id == habit_id, Habit.user_id == user_id)
+        select(Habit).where(
+            Habit.id == habit_id,
+            Habit.user_id == user_id,
+            Habit.archived_at.is_(None),
+        )
     )
     return result.scalar_one_or_none()
 
@@ -143,6 +152,19 @@ async def remove_completion(db: AsyncSession, habit_id: UUID, completed_date: da
     await db.delete(log)
     await db.flush()
     return True
+
+
+MAX_RANGE_DAYS = 366
+
+
+def validate_date_range(
+    start_date: date, end_date: date, max_days: int = MAX_RANGE_DAYS
+) -> None:
+    """Raise ValueError if the range is inverted or wider than ``max_days``."""
+    if start_date > end_date:
+        raise ValueError("start_date must be on or before end_date")
+    if (end_date - start_date).days + 1 > max_days:
+        raise ValueError(f"date range too large (max {max_days} days)")
 
 
 async def get_logs(
@@ -200,7 +222,9 @@ def build_analytics(
     created_date: date,
 ) -> HabitAnalytics:
     """Compute analytics from a habit's completion dates (no DB access)."""
-    all_dates = list(completed_dates)
+    # Ignore any future-dated completion (the API also rejects them) so totals,
+    # weekday distribution and longest streak cannot be inflated.
+    all_dates = [d for d in completed_dates if d <= today]
 
     day_names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
     weekday_counts = Counter(d.weekday() for d in all_dates)
@@ -219,9 +243,7 @@ def build_analytics(
     )
 
 
-async def get_analytics(db: AsyncSession, habit: Habit) -> HabitAnalytics:
-    today = date.today()
-
+async def get_analytics(db: AsyncSession, habit: Habit, today: date) -> HabitAnalytics:
     # Single fetch of all completion dates; every metric is derived in memory,
     # replacing the previous separate streak/count/weekly/rate queries.
     result = await db.execute(

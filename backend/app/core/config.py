@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     REDIS_URL: str = "redis://localhost:6379/2"
     LOG_LEVEL: str = "info"
     CORS_ORIGINS: list[str] = ["http://localhost:3020"]
+    # Secure flag for the refresh-token cookie. False for local HTTP dev; MUST be
+    # set true (COOKIE_SECURE=true) in any HTTPS/production deployment.
+    COOKIE_SECURE: bool = False
 
     model_config = {"env_file": "../.env.local", "extra": "ignore"}
 
