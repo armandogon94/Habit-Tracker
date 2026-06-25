@@ -20,6 +20,7 @@ from app.services.streak_service import (
     current_streak_from_dates,
     longest_streak_from_dates,
 )
+from app.services.time_service import local_today, to_local_date
 
 
 def build_habit_responses(
@@ -243,7 +244,9 @@ def build_analytics(
     )
 
 
-async def get_analytics(db: AsyncSession, habit: Habit, today: date) -> HabitAnalytics:
+async def get_analytics(db: AsyncSession, habit: Habit, tz: str | None) -> HabitAnalytics:
+    today = local_today(tz)
+
     # Single fetch of all completion dates; every metric is derived in memory,
     # replacing the previous separate streak/count/weekly/rate queries.
     result = await db.execute(
@@ -252,5 +255,9 @@ async def get_analytics(db: AsyncSession, habit: Habit, today: date) -> HabitAna
     all_dates = [row[0] for row in result.all()]
 
     window_start = today - timedelta(days=29)
-    created_date = habit.created_at.date() if habit.created_at else window_start
+    # created_at is stored UTC; convert to the user's local date so the rate
+    # window denominator uses the same calendar as every other metric.
+    created_date = (
+        to_local_date(habit.created_at, tz) if habit.created_at else window_start
+    )
     return build_analytics(all_dates, today, created_date)

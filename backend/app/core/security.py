@@ -6,16 +6,19 @@ from jose import JWTError, jwt
 from app.core.config import settings
 
 
-# bcrypt only consumes the first 72 bytes of the input, and bcrypt>=4 raises
-# ValueError on anything longer instead of truncating. Truncate explicitly so a
-# long password is hashed instead of crashing register/login with a 500.
-# Existing hashes are unaffected: every stored hash came from a <=72-byte
-# password (longer ones used to crash), and truncating those is a no-op.
+# bcrypt only consumes the first 72 bytes and bcrypt>=4 raises on longer input.
+# Reject over-limit passwords here rather than truncating, so two passwords that
+# share a 72-byte prefix can never hash/verify to the same value. The request
+# schemas (app/schemas/auth.py) reject these first; this is defence-in-depth for
+# any non-HTTP caller (mobile, CLI, seed scripts).
 _BCRYPT_MAX_BYTES = 72
 
 
 def _bcrypt_bytes(password: str) -> bytes:
-    return password.encode("utf-8")[:_BCRYPT_MAX_BYTES]
+    encoded = password.encode("utf-8")
+    if len(encoded) > _BCRYPT_MAX_BYTES:
+        raise ValueError(f"password exceeds bcrypt's {_BCRYPT_MAX_BYTES}-byte limit")
+    return encoded
 
 
 def hash_password(password: str) -> str:
@@ -23,7 +26,13 @@ def hash_password(password: str) -> str:
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return bcrypt.checkpw(_bcrypt_bytes(plain), hashed.encode("utf-8"))
+    try:
+        encoded = _bcrypt_bytes(plain)
+    except ValueError:
+        # An over-limit input can never match a hash of a valid (<=72-byte)
+        # password, so reject rather than raising during authentication.
+        return False
+    return bcrypt.checkpw(encoded, hashed.encode("utf-8"))
 
 
 def create_access_token(user_id: str) -> str:

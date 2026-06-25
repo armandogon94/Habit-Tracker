@@ -12,10 +12,18 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 UTC = ZoneInfo("UTC")
 
 
+def _zone(timezone: str | None) -> ZoneInfo:
+    try:
+        return ZoneInfo(timezone) if timezone else UTC
+    except (ZoneInfoNotFoundError, ValueError):
+        return UTC
+
+
 def local_today(timezone: str | None) -> date:
     """Today's date in the given IANA timezone (UTC fallback on bad input)."""
-    try:
-        tz = ZoneInfo(timezone) if timezone else UTC
-    except (ZoneInfoNotFoundError, ValueError):
-        tz = UTC
-    return datetime.now(tz).date()
+    return datetime.now(_zone(timezone)).date()
+
+
+def to_local_date(moment: datetime, timezone: str | None) -> date:
+    """The calendar date of an aware (UTC) datetime in the given timezone."""
+    return moment.astimezone(_zone(timezone)).date()

@@ -7,6 +7,7 @@ external dependency is settings.JWT_SECRET, which resolves to a usable value.
 from datetime import datetime, timedelta, timezone
 
 import bcrypt
+import pytest
 from jose import jwt
 
 from app.core.config import settings
@@ -36,22 +37,25 @@ class TestPasswordHashing:
         hashed = hash_password("the right one")
         assert verify_password("the wrong one", hashed) is False
 
-    def test_long_password_does_not_crash(self):
-        # bcrypt 5.x raises ValueError for inputs > 72 bytes. A user must be
-        # able to register/login with a long password instead of getting a 500.
-        pw = "a" * 100
+    def test_password_at_72_bytes_roundtrips(self):
+        pw = "a" * 72
         hashed = hash_password(pw)
         assert verify_password(pw, hashed) is True
 
-    def test_wrong_long_password_is_rejected(self):
-        hashed = hash_password("a" * 100)
-        assert verify_password("b" * 100, hashed) is False
+    def test_hash_rejects_password_over_72_bytes(self):
+        # No silent truncation: two passwords sharing a 72-byte prefix must not
+        # hash to the same value.
+        with pytest.raises(ValueError):
+            hash_password("a" * 73)
 
-    def test_multibyte_password_over_72_bytes_does_not_crash(self):
-        # 30 lock emoji = 120 UTF-8 bytes; truncating bytes must not crash.
-        pw = "\U0001f512" * 30
-        hashed = hash_password(pw)
-        assert verify_password(pw, hashed) is True
+    def test_hash_rejects_multibyte_password_over_72_bytes(self):
+        # 30 lock emoji = 120 UTF-8 bytes (only 30 characters).
+        with pytest.raises(ValueError):
+            hash_password("\U0001f512" * 30)
+
+    def test_verify_returns_false_for_over_72_byte_input(self):
+        hashed = hash_password("a" * 72)
+        assert verify_password("a" * 100, hashed) is False
 
     def test_existing_short_hash_still_verifies(self):
         # Backward-compat: a hash produced by raw bcrypt (<=72 byte password)
