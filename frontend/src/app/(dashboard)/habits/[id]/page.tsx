@@ -2,6 +2,7 @@
 
 import { useAnalytics, useCalendar, useHabit, useToggleHabit, useDeleteHabit } from "@/hooks/useHabits";
 import { useAuth } from "@/lib/auth";
+import { localToday } from "@/lib/utils";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo } from "react";
@@ -95,7 +96,7 @@ export default function HabitDetailPage() {
     );
   }
 
-  const today = new Date().toISOString().split("T")[0];
+  const today = localToday();
 
   const weeklyData = analytics
     ? Object.entries(analytics.weekly_counts).map(([day, count]) => ({

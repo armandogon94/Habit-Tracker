@@ -1,12 +1,13 @@
 "use client";
 
 import { useToggleHabit } from "@/hooks/useHabits";
+import { localToday } from "@/lib/utils";
 import type { Habit } from "@/types/habit";
 import Link from "next/link";
 
 export function HabitCard({ habit }: { habit: Habit }) {
   const toggle = useToggleHabit();
-  const today = new Date().toISOString().split("T")[0];
+  const today = localToday();
 
   function handleToggle(e: React.MouseEvent) {
     e.preventDefault();
