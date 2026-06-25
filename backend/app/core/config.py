@@ -1,9 +1,12 @@
+from pydantic import Field
 from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    DATABASE_URL: str = "postgresql+asyncpg://postgres:changeme_secure_password@localhost:5432/habits_db"
-    JWT_SECRET: str = "dev-secret-key-change-in-production-min-32-chars"
+    # Required secrets — intentionally have NO defaults so a missing or empty value
+    # fails fast at startup instead of silently falling back to an insecure credential.
+    DATABASE_URL: str = Field(min_length=1)
+    JWT_SECRET: str = Field(min_length=32)
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
