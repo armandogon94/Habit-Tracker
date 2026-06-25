@@ -16,6 +16,8 @@ dependencies = [
     "python-multipart>=0.0.6",
     "python-dateutil>=2.8.0",
     "email-validator>=2.3.0",
+    "redis>=8.0.1",
+    "slowapi>=0.1.10",
 ]
 
 [project.optional-dependencies]
@@ -24,6 +26,7 @@ dev = [
     "pytest-asyncio>=0.23.0",
     "httpx>=0.25.0",
     "ruff>=0.2.0",
+    "fakeredis>=2.36.2",
 ]
 
 [tool.ruff]
